@@ -11,6 +11,9 @@ terraform/
 ├── versions.tf               # Terraform version requirements
 ├── .gitignore                # Git ignore rules
 ├── README.md                 # This file
+├── .github/
+│   └── workflows/
+│       └── terraform.yml     # GitHub Actions pipeline
 ├── environments/
 │   ├── dev/                  # Development environment configuration
 │   │   ├── main.tf          # Dev resource definitions
@@ -284,16 +287,24 @@ Most object names are generated in `locals.tf` using the selected environment an
 
 ## Backend Configuration
 
-Remote state is configured to use Azure Storage. Update `backend.tf` with your storage account details:
+Remote state is configured to use Azure Storage. Each environment has its own backend file under `environments/dev/backend.tf` and `environments/prod/backend.tf`.
+
+The GitHub Actions pipeline provides backend configuration at runtime using repository secrets.
+
+Required secrets:
+- `AZURE_CREDENTIALS` - Azure service principal JSON for `azure/login`
+- `KEYVAULT_NAME` - Azure Key Vault name containing backend secrets
+
+The Key Vault should contain the following secrets:
+- `TF_BACKEND_RG`
+- `TF_BACKEND_STORAGE_ACCOUNT`
+- `TF_BACKEND_CONTAINER`
+
+The backend files should contain only the backend block:
 
 ```hcl
 terraform {
-  backend "azurerm" {
-    resource_group_name  = "<state-rg>"
-    storage_account_name = "<stateaccountname>"
-    container_name       = "<state-container>"
-    key                  = "terraform.tfstate"
-  }
+  backend "azurerm" {}
 }
 ```
 

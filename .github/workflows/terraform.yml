@@ -1,0 +1,171 @@
+name: Terraform Azure CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to deploy"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+
+jobs:
+  plan:
+    if: github.event_name == 'push'
+    name: Plan for ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch backend secrets from Azure Key Vault
+        run: |
+          echo "TF_BACKEND_RG=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_RG --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_STORAGE_ACCOUNT=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_STORAGE_ACCOUNT --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_CONTAINER=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_CONTAINER --query value -o tsv)" >> $GITHUB_ENV
+        env:
+          KEYVAULT_NAME: ${{ secrets.KEYVAULT_NAME }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform init
+        working-directory: environments/${{ matrix.environment }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=${{ matrix.environment }}/terraform.tfstate"
+
+      - name: Terraform validate
+        working-directory: environments/${{ matrix.environment }}
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: environments/${{ matrix.environment }}
+        run: |
+          terraform plan \
+            -var-file="${{ matrix.environment }}.tfvars" \
+            -out="${{ matrix.environment }}.tfplan"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ matrix.environment }}
+          path: environments/${{ matrix.environment }}/${{ matrix.environment }}.tfplan
+
+  plan_dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    name: Plan for dispatch environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch backend secrets from Azure Key Vault
+        run: |
+          echo "TF_BACKEND_RG=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_RG --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_STORAGE_ACCOUNT=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_STORAGE_ACCOUNT --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_CONTAINER=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_CONTAINER --query value -o tsv)" >> $GITHUB_ENV
+        env:
+          KEYVAULT_NAME: ${{ secrets.KEYVAULT_NAME }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform init
+        working-directory: environments/${{ github.event.inputs.environment }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate"
+
+      - name: Terraform validate
+        working-directory: environments/${{ github.event.inputs.environment }}
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: environments/${{ github.event.inputs.environment }}
+        run: |
+          terraform plan \
+            -var-file="${{ github.event.inputs.environment }}.tfvars" \
+            -out="${{ github.event.inputs.environment }}.tfplan"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ github.event.inputs.environment }}
+          path: environments/${{ github.event.inputs.environment }}/${{ github.event.inputs.environment }}.tfplan
+
+  apply:
+    if: github.event_name == 'workflow_dispatch'
+    name: Apply to ${{ github.event.inputs.environment }}
+    needs: plan_dispatch
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch backend secrets from Azure Key Vault
+        run: |
+          echo "TF_BACKEND_RG=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_RG --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_STORAGE_ACCOUNT=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_STORAGE_ACCOUNT --query value -o tsv)" >> $GITHUB_ENV
+          echo "TF_BACKEND_CONTAINER=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name TF_BACKEND_CONTAINER --query value -o tsv)" >> $GITHUB_ENV
+        env:
+          KEYVAULT_NAME: ${{ secrets.KEYVAULT_NAME }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: plan-${{ github.event.inputs.environment }}
+          path: environments/${{ github.event.inputs.environment }}
+
+      - name: Terraform init
+        working-directory: environments/${{ github.event.inputs.environment }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate"
+
+      - name: Terraform apply
+        working-directory: environments/${{ github.event.inputs.environment }}
+        run: terraform apply -auto-approve "${{ github.event.inputs.environment }}.tfplan"
