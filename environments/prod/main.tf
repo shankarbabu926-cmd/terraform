@@ -1,34 +1,28 @@
 module "resource_group" {
   source = "../../modules/resourcegroup"
 
-  name     = var.resource_group_name
-  location = var.location
+  name     = local.rg_name
+  location = local.location
 }
 
 module "storage_account" {
   source = "../../modules/storage_account"
 
-  name                = var.storage_account_name
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  container_name      = var.storage_container_name
-  tags = {
-    environment = "prod"
-  }
+  name                = local.storage_account_name
+  resource_group_name = local.rg_name
+  location            = local.location
+  container_name      = local.storage_container_name
+  tags                = local.tags
 }
 
 module "vnet" {
   source = "../../modules/vnet"
 
-  vnet_name           = var.vnet_name
-  location            = var.location
-  resource_group_name = var.resource_group_name
+  vnet_name           = local.vnet_name
+  location            = local.location
+  resource_group_name = local.rg_name
   address_space       = var.vnet_address_space
-  subnets = {
-    (var.subnet_name) = {
-      address_prefixes = [var.subnet_address_prefix]
-    }
-  }
+  subnets             = local.subnets
 
   depends_on = [module.resource_group]
 }
@@ -36,9 +30,9 @@ module "vnet" {
 module "nsg" {
   source = "../../modules/nsg"
 
-  name                = "${var.vnet_name}-nsg"
-  location            = var.location
-  resource_group_name = var.resource_group_name
+  name                = local.nsg_name
+  location            = local.location
+  resource_group_name = local.rg_name
 }
 
 module "nsg_association" {
