@@ -14,10 +14,12 @@ terraform/
 ├── environments/
 │   ├── dev/                  # Development environment configuration
 │   │   ├── main.tf          # Dev resource definitions
+│   │   ├── locals.tf        # Dev local values and naming logic
 │   │   ├── variable.tf      # Dev input variables
 │   │   └── dev.tfvars       # Dev variable values
 │   └── prod/                 # Production environment configuration
 │       ├── main.tf          # Prod resource definitions
+│       ├── locals.tf        # Prod local values and naming logic
 │       ├── variable.tf      # Prod input variables
 │       └── prod.tfvars      # Prod variable values
 └── modules/                  # Reusable Terraform modules
@@ -186,18 +188,36 @@ Creates Azure Storage Accounts and Blob Containers for state storage or data.
 ### Development Environment
 **Configuration:** `environments/dev/`
 
+- **Environment:** `dev`
+- **Location:** `East US`
 - **VNet Address Space:** `10.0.0.0/16`
 - **Subnet Address Prefix:** `10.0.1.0/24`
-- **Storage Account:** `devstorageacct01`
-- **Storage Container:** `devstate`
 
 ### Production Environment
 **Configuration:** `environments/prod/`
 
+- **Environment:** `prod`
+- **Location:** `East US`
 - **VNet Address Space:** `172.16.0.0/16`
 - **Subnet Address Prefix:** `172.16.1.0/24`
-- **Storage Account:** `prodstorageacct01`
-- **Storage Container:** `prodstate`
+
+## Naming Convention
+
+Resource names are generated in each environment using the pattern:
+
+- `<resource>-<env>-<region>`
+
+For example, with `environment = "dev"` and `location = "East US"` the generated names are:
+
+- `rg-dev-eastus`
+- `vnet-dev-eastus`
+- `subnet-dev-eastus`
+- `nsg-dev-eastus`
+- `container-dev-eastus`
+
+Azure Storage Account names are also generated with a storage-safe prefix:
+
+- `sta<env><region>` (for example: `stadev-eastus`)
 
 ## Prerequisites
 
@@ -247,16 +267,20 @@ terraform destroy -var-file="prod.tfvars" # for prod
 ## Input Variables
 
 ### Common Variables (all environments)
-- `resource_group_name` - Name of the Azure Resource Group
+- `environment` - Environment name (used to generate names)
+- `resource_group_name` - Name of the Azure Resource Group (defined, but final value is derived from locals)
 - `location` - Azure region (e.g., "East US")
-- `vnet_name` - Name of the Virtual Network
+- `vnet_name` - Name of the Virtual Network (defined, but final value is derived from locals)
 - `vnet_address_space` - Address space for the VNet (default varies by environment)
-- `subnet_name` - Name of the subnet
+- `subnet_name` - Name of the subnet (defined, but final value is derived from locals)
 - `subnet_address_prefix` - Subnet address prefix (default varies by environment)
-- `storage_account_name` - Storage account name
-- `storage_container_name` - Blob container name
+- `storage_account_name` - Storage account name (defined, but final value is derived from locals)
+- `storage_container_name` - Blob container name (defined, but final value is derived from locals)
 
 See `environments/dev/variable.tf` or `environments/prod/variable.tf` for full variable definitions.
+
+### Naming Behavior
+Most object names are generated in `locals.tf` using the selected environment and location to enforce consistent naming across dev and prod.
 
 ## Backend Configuration
 
